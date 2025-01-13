@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score
 from python_files.Preprocess import PaddingEstimator, add_pad, extract_features_with_window, process_labels_with_window, WindowFeatureExtractor, WindowLabelProcessor, process_labels_with_window_2d, PCADimensionReducer
 
 
-from python_files.Plot import compute_and_plot_statistics, plot_statistics_per_class
+from python_files.Plot import compute_and_plot_statistics, plot_statistics_per_class, plot_data_raport
 
 from sklearn.pipeline import Pipeline
 from sklearn.multioutput import MultiOutputClassifier
@@ -47,7 +47,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer, make_column_selector
 
 def debug_function(X):
-    print(f"Shape after transformation: {X.shape}")
+    # print(f"Shape after transformation: {X.shape}")
     return X
 
 
@@ -295,16 +295,12 @@ class AutoMlMultiLabelClassifier:
             print(f"Błąd podczas obliczania dokładności: {e}")
             return None
 
-    def raport_scores(self, X, y):
+    def raport_scores(self, statistics):
         """
         Funkcja wyświetla najważniejsze statystki dla modelu. Tworzy wyrkesu i podsumowania. Szczególnie liczy efektywnośc modelu dla każdej klasy oddzielnie.
 
         Args:
-            X (np.ndarray): Dane wejściowe (features).
-            y (np.ndarray): Rzeczywiste etykiety (labels).
-
-        Returns:
-            dictinary: statistics - słownik zawierający informację o wszystkich najważniejszych statystykach, dla każdej klasy.
+            dictionary: statistics - słownik zawierający informację o wszystkich najważniejszych statystykach, dla każdej klasy.
 
        statistics = {
             'precision': precision_scores,
@@ -314,12 +310,38 @@ class AutoMlMultiLabelClassifier:
             'accuracy': accuracy_scores
         }
         """
-        # Wyliczamy statystki modelu:
-        statistics = self.score(X, y)
-
+        print("Wykres przedstawiający statystyki (precision, recall, f1, AUC oraz accuracy) dla każdej klasy błędów z osobna")
         # Wykresy dla statystyk dla różnych klas.
         plot_statistics_per_class(statistics, self.labels_type)
+
+        # Poniżej wypisujemy wyniki w postaci liczbowej
+        statistics_list = sorted(statistics)  # Sortujemy metryki alfabetycznie
+        statistics_dict = {metric: statistics[metric] for metric in statistics_list}
         
+        # Tworzenie DataFrame
+        df = pd.DataFrame.from_dict(statistics_dict, orient="index")
+        df.columns = [f"Value {self.labels_type[i]}" for i in range(df.shape[1])]  # Nazwy kolumn
+        
+        # Wyświetlenie macierzy
+        print("Wyniki w postaci macierzy")
+        print(df)
+
+
+    def raport_data(self, X, y):
+        """
+        Funkcja wyświetla najważniejsze statystki i informacje na temat zestawu danych.
+
+        Args:
+            X (np.ndarray): Dane wejściowe (features).
+            y (np.ndarray): Rzeczywiste etykiety (labels).
+
+        """
+        # Trimming danych
+        X, y = self.trimming_data(X, y)
+            
+        plot_data_raport(X, y, self.labels_type)
+
+
 # Przykład użycia
 if __name__ == "__main__":
     # Generowanie przykładowych danych
