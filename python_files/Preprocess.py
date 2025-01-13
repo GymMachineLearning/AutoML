@@ -33,6 +33,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import logging
 import numpy as np
+
 # Konfiguracja logowania
 logging.basicConfig(level=logging.INFO)
 
@@ -140,6 +141,8 @@ class PCADimensionReducer(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         # Transformujemy dane, aby uzyskać 50 głównych składowych
         return self.pca.transform(X)
+
+
 class WindowFeatureExtractor(BaseEstimator, TransformerMixin):
     def __init__(self, window_size, step_size):
         self.window_size = window_size

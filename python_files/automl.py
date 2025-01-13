@@ -5,6 +5,9 @@ from sklearn.metrics import accuracy_score
 
 from python_files.Preprocess import PaddingEstimator, add_pad, extract_features_with_window, process_labels_with_window, WindowFeatureExtractor, WindowLabelProcessor, process_labels_with_window_2d, PCADimensionReducer
 
+
+from python_files.Plot import compute_and_plot_statistics, plot_statistics_per_class
+
 from sklearn.pipeline import Pipeline
 from sklearn.multioutput import MultiOutputClassifier
 import xgboost as xgb
@@ -49,15 +52,67 @@ def debug_function(X):
 
 
 class AutoMlMultiLabelClassifier:
-    def __init__(self, model=None):
+    def __init__(self, model=None, window_size=120, step_size=120, labels_type=None):
         """
 
         Args:
             model (sklearn.base.BaseEstimator, optional): Model klasyfikacyjny. 
                 Domyślnie RandomForestClassifier.
         """
+        
         self.model = model if model else RandomForestClassifier()
         self.is_fitted = False
+        self.window_size = window_size # Rozmiar okna dla obrabiania X
+        self.step_size = step_size # Rozmiar okna dla obrabiania y
+        self.labels_type = labels_type 
+        
+    def trimming_data(self, X, y):
+        # Trimming z wykorzstyaniem funkcji pojedyńczych
+        X = self.trimming_data_y(X)
+        y = self.trimming_data_y(y)
+        return X, y
+
+    def trimming_data_y(self, y):
+        # Znajdź minimalną długość
+        min_length = min(arr.shape[0] for arr in y)
+        
+        trimmed_segments_y = [
+            arr[i:i+min_length, :] 
+            for arr in y 
+            for i in range(0, arr.shape[0] - min_length + 1, min_length)
+        ]
+        
+        y = np.array(trimmed_segments_y)
+
+        y = y.reshape(-1, y.shape[2])
+
+        y = pd.DataFrame(y)
+
+        y.columns = ['label_' + str(col) for col in y.columns]
+
+        return y
+
+    def trimming_data_X(self, X):
+        # Znajdź minimalną długość
+        min_length = min(arr.shape[0] for arr in X)
+
+        # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
+        trimmed_segments = [
+            arr[i:i+min_length, :] 
+            for arr in X 
+            for i in range(0, arr.shape[0] - min_length + 1, min_length)
+        ]
+        
+        X = np.array(trimmed_segments)
+
+        X = X.reshape(-1, X.shape[2])
+
+        X = pd.DataFrame(X)
+
+        X.columns = ['feature_' + str(col) for col in X.columns]
+
+        return X
+
     def fit(self, X, y):
         """
         Automatycznie trenuje i optymalizuje modele ML na podanych danych.
@@ -81,53 +136,12 @@ class AutoMlMultiLabelClassifier:
                     # 'model__estimator__subsample': [0.8, 1.0],
                 }
             }
-                        # Znajdź minimalną długość
-            min_length = min(arr.shape[0] for arr in X)
+
+            # Trimming danych
+            X, y = self.trimming_data(X, y)
             
-            # Tworzymy pipeline dla cech (X)
-            
+            y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
-            
-            # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
-            trimmed_segments = [
-                arr[i:i+min_length, :] 
-                for arr in X 
-                for i in range(0, arr.shape[0] - min_length + 1, min_length)
-            ]
-            
-            # # Wynik
-            # print(f"Liczba segmentów: {len(trimmed_segments)}")
-            # for i, segment in enumerate(trimmed_segments):
-            #     print(f"Segment {i+1}: {segment.shape}")
-
-
-            trimmed_segments_y = [
-                arr[i:i+min_length, :] 
-                for arr in y 
-                for i in range(0, arr.shape[0] - min_length + 1, min_length)
-            ]
-            
-            # # Wynik
-            # print(f"Liczba segmentów y: {len(trimmed_segments_y)}")
-            # for i, segment in enumerate(trimmed_segments_y):
-            #     print(f"Segment {i+1}: {segment.shape}") 
-            X = np.array(trimmed_segments)
-            y = np.array(trimmed_segments_y)
-
-            X = X.reshape(-1, X.shape[2])
-            y = y.reshape(-1, y.shape[2])
-
-            X = pd.DataFrame(X)
-            y = pd.DataFrame(y)
-
-            X.columns = ['feature_' + str(col) for col in X.columns]
-            y.columns = ['label_' + str(col) for col in y.columns]
-
-            print(X.dtypes)
-            print(y.dtypes)
-            y_test = process_labels_with_window_2d(y,120, 120)
-
-            print("yacalyt.shape: ",y_test.shape)
             # Podział na dane treningowe i testowe
             # pca = PCA(n_components=50)
             # X = pca.fit_transform(X)
@@ -140,7 +154,7 @@ class AutoMlMultiLabelClassifier:
             # Tworzymy pipeline dla etykiet (y)
             label_pipeline = Pipeline([
                 ('debug11', FunctionTransformer(debug_function, validate=False)),
-                ('label_processing', WindowLabelProcessor(window_size=120, step=120)),
+                ('label_processing', WindowLabelProcessor(window_size=self.window_size, step=self.step_size)),
                 ('debug21', FunctionTransformer(debug_function, validate=False)),
 
             ])
@@ -164,16 +178,13 @@ class AutoMlMultiLabelClassifier:
                 ])
             }
 
-
-            ext = WindowLabelProcessor(window_size=120, step=120)
-            y = ext.transform( pd.DataFrame(y))
+            ext = WindowLabelProcessor(window_size=self.window_size, step=self.step_size)
+            y = ext.transform(pd.DataFrame(y))
             
-            ext = WindowFeatureExtractor(window_size=120, step_size=120)
-            X = ext.transform( pd.DataFrame(X))
+            ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
+            X = ext.transform(pd.DataFrame(X))
+            
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-
-
 
             print('fituje')
             pipelines['RandomForest'].fit(X_train, y_train)
@@ -208,201 +219,18 @@ class AutoMlMultiLabelClassifier:
             accuracy = accuracy_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred, average='weighted')
 
+            # Wyćwiczyliśmy model
+            self.is_fitted = True
+
+            # Zapis modelu
+            self.model = best_model
+            
             print(f"Accuracy: {accuracy}")
             print(f"Recall: {recall}")
 
         except Exception as e:
             print(f"Wystąpił błąd podczas treningu: {e}")
             
-    # def fit(self, X, y):
-    #     """
-    #     Automatycznie trenuje i optymalizuje modele ML na podanych danych.
-
-    #     Args:
-    #         X (np.ndarray): Dane wejściowe (features).
-    #         y (np.ndarray): Etykiety (labels).
-    #     """
-    #     try:
-    #         # Definicja modeli bazowych
-    #         base_models = [
-    #             ('RandomForest', RandomForestClassifier()),
-    #             ('XGBoost', OneVsRestClassifier(XGBClassifier(n_jobs=8, eval_metric='auc', 
-    #                                                           objective='binary:hinge', tree_method='hist')))
-    #         ]
-
-    #         # Definicja parametrów dla GridSearchCV
-    #         param_grid = {
-    #             'RandomForest': {
-    #                 'n_estimators': [100, 200, 300],
-    #                 'max_depth': [10, 20, 30]
-    #             },
-    #             'XGBoost': {
-    #                 'estimator__n_estimators': [500, 1000, 1500],
-    #                 'estimator__max_depth': [10, 20, 30]
-    #             }
-    #         }
-
-    #         # Tworzenie pipeline
-    #         one_rep = 50
-    #         division = 1
-    #         pipeline = Pipeline([
-    #             ('feature_extraction', WindowFeatureExtractor(window_size=one_rep, step_size=one_rep // division)),
-    #             ('label_processing', WindowLabelProcessor(window_size=one_rep, step=one_rep // division)),
-    #         ])
-
-    #         # Przekształcanie danych
-    #         feature_extractor = pipeline.named_steps['feature_extraction']
-    #         label_processor = pipeline.named_steps['label_processing']
-    #         for x in X:
-    #             print(x.shape)
-               
-    #         # Znajdź minimalną długość
-    #         min_length = min(arr.shape[0] for arr in X)
-            
-    #         # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
-    #         trimmed_segments = [
-    #             arr[i:i+min_length, :] 
-    #             for arr in X 
-    #             for i in range(0, arr.shape[0] - min_length + 1, min_length)
-    #         ]
-            
-    #         # # Wynik
-    #         # print(f"Liczba segmentów: {len(trimmed_segments)}")
-    #         # for i, segment in enumerate(trimmed_segments):
-    #         #     print(f"Segment {i+1}: {segment.shape}")
-
-
-    #         trimmed_segments_y = [
-    #             arr[i:i+min_length, :] 
-    #             for arr in y 
-    #             for i in range(0, arr.shape[0] - min_length + 1, min_length)
-    #         ]
-            
-    #         # # Wynik
-    #         # print(f"Liczba segmentów y: {len(trimmed_segments_y)}")
-    #         # for i, segment in enumerate(trimmed_segments_y):
-    #         #     print(f"Segment {i+1}: {segment.shape}") 
-
-            
-    #         # X = feature_extractor.transform(X)
-    #         # y = label_processor.transform(y)
-    #         # y = y[:, [0, 1, 2, 3, 5, 7]]
-
-    #         # # Redukcja wymiarowości
-    #         # pca = PCA(n_components=50)
-    #         # X = pca.fit_transform(X)
-
-    #         X = np.array(trimmed_segments)
-    #         y = np.array(trimmed_segments_y)
-    #         # Podział na dane treningowe i testowe
-    #         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    #         # Optymalizacja modeli
-    #         best_model = None
-    #         best_score = 0
-    #         best_params = {}
-
-    #     #     for name, model in base_models:
-    #     #         print(f"Trenuję model: {name}")
-
-    #     #         # Inicjalizacja GridSearchCV
-    #     #         grid_search = GridSearchCV(model, param_grid[name], cv=5,scoring='f1_weighted', n_jobs=4)
-    #     #         grid_search.fit(X_train, y_train)
-
-    #     #         # Najlepsze wyniki dla danego modelu
-    #     #         print(f"{name} - Best Parameters: {grid_search.best_params_}")
-    #     #         print(f"{name} - Best Cross-Validation Score: {grid_search.best_score_}")
-
-    #     #         # Sprawdzanie, czy to najlepszy model
-    #     #         if grid_search.best_score_ > best_score:
-    #     #             best_model = grid_search.best_estimator_
-    #     #             best_score = grid_search.best_score_
-    #     #             best_params = grid_search.best_params_
-
-    #     #     # Predykcja i ocena najlepszego modelu
-    #     #     print("\nNajlepszy model:", best_model)
-    #     #     print("Najlepsze parametry:", best_params)
-
-    #     #     y_pred = best_model.predict(X_test)
-
-    #     #     accuracy = accuracy_score(y_test, y_pred)
-    #     #     recall = recall_score(y_test, y_pred, average='weighted')
-
-    #     #     print(f"Accuracy: {accuracy}")
-    #     #     print(f"Recall: {recall}")
-    
-    #     except Exception as e:
-    #         print(f"Wystąpił błąd podczas treningu: {e}")
-
-
-
-
-    # def fit(self, X, y):
-    #     """
-    #     Trenuje model na podanych danych.
-
-    #     Args:
-    #         X (np.ndarray): Dane wejściowe (features).
-    #         y (np.ndarray): Etykiety (labels).
-    #     """
-    #     try:
-                        
-    #         # Definicja modelu
-    #         model = OneVsRestClassifier(XGBClassifier(n_jobs=8, max_depth=20, n_estimators=1000,
-    #                                                    eval_metric='auc', objective='binary:hinge',
-    #                                                    tree_method='hist'))
-            
-    #         param_grid = {
-    #             # 'estimator__max_depth': [5, 10, 15, 20],
-    #             'estimator__n_estimators': [500, 1000, 1500],
-    #             # 'estimator__learning_rate': [0.01, 0.1, 0.2],
-    #         }
-                        
-    #         # Tworzenie pipeline
-    #         one_rep = 50
-    #         divison = 1
-    #         pipeline = Pipeline([
-    #             ('feature_extraction', WindowFeatureExtractor(window_size=one_rep, step_size=one_rep // divison)),
-    #             ('label_processing', WindowLabelProcessor(window_size=one_rep, step=one_rep // divison)),
-    #             ('classifier', model)
-    #         ])
-            
-    #         # Przekształcanie danych
-    #         feature_extractor = pipeline.named_steps['feature_extraction']
-    #         label_processor = pipeline.named_steps['label_processing']
-    #         classifier = pipeline.named_steps['classifier']
-    #         X = feature_extractor.transform(X)
-    #         y = label_processor.transform(y)
-    #         y = y[:, [0, 1, 2, 3, 5, 7]]
-    #         pca = PCA(n_components=50)  # Wybieramy 100 głównych składowych
-    #         X = pca.fit_transform(X)
-
-    #         # Podział na dane treningowe i testowe
-    #         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-    #         # Inicjalizacja GridSearchCV
-    #         grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
-            
-    #         # Dopasowanie modelu
-    #         grid_search.fit(X_train, y_train)
-            
-    #         # Najlepsze parametry
-    #         print(f'Best Parameters: {grid_search.best_params_}')
-    #         print(f'Best Cross-Validation Score: {grid_search.best_score_}')
-            
-    #         # Predykcja na zbiorze testowym
-    #         y_pred = grid_search.best_estimator_.predict(X_test)
-            
-    #         # Ocena modelu
-    #         accuracy = accuracy_score(y_test, y_pred)
-    #         print(f'Accuracy: {accuracy}')
-            
-    #         recall = recall_score(y_test, y_pred, average='weighted')
-    #         print(f'Recall: {recall}')
-
-    #     except Exception as e:
-    #         print(f"Błąd podczas trenowania modelu: {e}")
-
     def predict(self, X):
         """
         Przewiduje etykiety dla podanych danych.
@@ -416,13 +244,20 @@ class AutoMlMultiLabelClassifier:
         if not self.is_fitted:
             raise ValueError("Model nie został jeszcze wytrenowany. Użyj metody fit przed predict.")
         try:
+            # Triming danych
+            X = self.trimming_data_X(X)
+            
+            ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
+            X = ext.transform(pd.DataFrame(X))
+
             predictions = self.model.predict(X)
+            
             return predictions
         except Exception as e:
             print(f"Błąd podczas przewidywania: {e}")
             return None
 
-    def score(self, X, y):
+    def score(self, X, y, plot_stats=False):
         """
         Oblicza dokładność modelu na podanych danych testowych.
 
@@ -431,18 +266,60 @@ class AutoMlMultiLabelClassifier:
             y (np.ndarray): Rzeczywiste etykiety (labels).
 
         Returns:
-            float: Dokładność modelu.
+            dictinary: statistics - słownik zawierający informację o wszystkich najważniejszych statystykach, dla każdej klasy.
+
+       statistics = {
+            'precision': precision_scores,
+            'recall': recall_scores,
+            'f1': f1_scores,
+            'auc': auc_scores,
+            'accuracy': accuracy_scores
+        }
         """
+
+        
         if not self.is_fitted:
             raise ValueError("Model nie został jeszcze wytrenowany. Użyj metody fit przed score.")
         try:
-            predictions = self.predict(X)
-            accuracy = accuracy_score(y, predictions)
-            return accuracy
+            y_pred = self.predict(X)
+            
+            # Trimming danych
+            y = self.trimming_data_y(y)
+
+            y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
+
+            statistics = compute_and_plot_statistics(y_test, y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
+            
+            return statistics
         except Exception as e:
             print(f"Błąd podczas obliczania dokładności: {e}")
             return None
 
+    def raport_scores(self, X, y):
+        """
+        Funkcja wyświetla najważniejsze statystki dla modelu. Tworzy wyrkesu i podsumowania. Szczególnie liczy efektywnośc modelu dla każdej klasy oddzielnie.
+
+        Args:
+            X (np.ndarray): Dane wejściowe (features).
+            y (np.ndarray): Rzeczywiste etykiety (labels).
+
+        Returns:
+            dictinary: statistics - słownik zawierający informację o wszystkich najważniejszych statystykach, dla każdej klasy.
+
+       statistics = {
+            'precision': precision_scores,
+            'recall': recall_scores,
+            'f1': f1_scores,
+            'auc': auc_scores,
+            'accuracy': accuracy_scores
+        }
+        """
+        # Wyliczamy statystki modelu:
+        statistics = self.score(X, y)
+
+        # Wykresy dla statystyk dla różnych klas.
+        plot_statistics_per_class(statistics, self.labels_type)
+        
 # Przykład użycia
 if __name__ == "__main__":
     # Generowanie przykładowych danych
