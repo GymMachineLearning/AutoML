@@ -314,7 +314,7 @@ class AutoMlMultiLabelClassifier:
             # y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
             print("y.shape: ", y.shape)
             print("y_pred.shape: ", y_pred.shape)
-            statistics = compute_and_plot_statistics(y, y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
+            statistics = compute_and_plot_statistics(np.array(y), y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
             
             return statistics
         except Exception as e:
