@@ -19,24 +19,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from lightgbm import LGBMClassifier
-class CustomPipeline(Pipeline):
-    def fit(self, X, y=None):
-        # Wypisanie kształtów przed transformacją
-        print(f'Original X shape: {X[0].shape}')
-        print(f'Original y shape: {y[0].shape}')
-        
-        # Wywołanie oryginalnej metody fit
-        super().fit(X, y)
-        
-        # Wypisanie kształtów po transformacji
-        for step_name, step_transformer in self.steps:
-            if hasattr(step_transformer, 'transform'):
-                X, y = step_transformer.transform(X, y)  # Zastosowanie transformacji
-                print(f'Post-transformation X shape: {X[0].shape}')
-                print(f'Post-transformation y shape: {y[0].shape}')
-        print(f'X type: {type(X)}')
-        print(f'y type: {type(y)}')
-        return self
+
 
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.multiclass import OneVsRestClassifier
