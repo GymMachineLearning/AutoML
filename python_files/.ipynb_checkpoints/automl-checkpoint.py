@@ -68,8 +68,11 @@ class AutoMlMultiLabelClassifier:
         
     def trimming_data(self, X, y):
         # Trimming z wykorzstyaniem funkcji pojedyńczych
-        X = self.trimming_data_y(X)
+        print("X.shape: ",X.shape)
+        X = self.trimming_data_X(X)
+        print("X.shape: ",X.shape)
         y = self.trimming_data_y(y)
+        print("y.shape: ",y.shape)
         return X, y
 
     def trimming_data_y(self, y):
@@ -85,7 +88,9 @@ class AutoMlMultiLabelClassifier:
         y = np.array(trimmed_segments_y)
 
         y = y.reshape(-1, y.shape[2])
+        # y = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
+        # y = y.reshape(y.shape[0], -1) 
         y = pd.DataFrame(y)
 
         y.columns = ['label_' + str(col) for col in y.columns]
@@ -104,11 +109,14 @@ class AutoMlMultiLabelClassifier:
         ]
         
         X = np.array(trimmed_segments)
+        # self.print("X.shape: ",X.shape)
 
-        X = X.reshape(-1, X.shape[2])
-
+        # X = X.reshape(X.shape[0], -1) 
+        X = X.reshape(-1,X.shape[2]) 
+        
+        print("X.shape: ",X.shape)
         X = pd.DataFrame(X)
-
+    
         X.columns = ['feature_' + str(col) for col in X.columns]
 
         return X
@@ -130,7 +138,7 @@ class AutoMlMultiLabelClassifier:
                     # 'model__min_samples_split': [2, 5, 10],
                 },
                 'XGBoost': {
-                    'model__estimator__n_estimators': [100, 200, 500, 1000],
+                    'model__estimator__n_estimators': [ 500],
                     # 'model__estimator__max_depth': [3, 6, 10],
                     # 'model__estimator__learning_rate': [0.01, 0.1, 0.3],
                     # 'model__estimator__subsample': [0.8, 1.0],
@@ -138,9 +146,9 @@ class AutoMlMultiLabelClassifier:
             }
 
             # Trimming danych
-            X, y = self.trimming_data(X, y)
+            # X, y = self.trimming_data(X, y)
             
-            y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
+            # y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
             # Podział na dane treningowe i testowe
             # pca = PCA(n_components=50)
@@ -167,27 +175,27 @@ class AutoMlMultiLabelClassifier:
             
             # Tworzenie pipeline'ów dla każdego modelu
             pipelines = {
-                'RandomForest': Pipeline([
-                    ('preprocessing', feature_pipeline),
-                    ('model', RandomForestClassifier())
-                ]),
+                # 'RandomForest': Pipeline([
+                #     ('preprocessing', feature_pipeline),
+                #     ('model', RandomForestClassifier())
+                # ]),
                 'XGBoost': Pipeline([
-                    ('preprocessing', feature_pipeline),
-                    ('model', OneVsRestClassifier(XGBClassifier(n_jobs=-1, eval_metric='auc',
+                    # ('preprocessing', feature_pipeline),
+                    ('model', OneVsRestClassifier(XGBClassifier(n_jobs=4, eval_metric='auc',
                                                                 objective='binary:hinge', tree_method='hist')))
                 ])
             }
 
-            ext = WindowLabelProcessor(window_size=self.window_size, step=self.step_size)
-            y = ext.transform(pd.DataFrame(y))
+            # ext = WindowLabelProcessor(window_size=self.window_size, step=self.step_size)
+            # y = ext.transform(pd.DataFrame(y))
             
-            ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
-            X = ext.transform(pd.DataFrame(X))
+            # ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
+            # X = ext.transform(pd.DataFrame(X))
             
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
             print('fituje')
-            pipelines['RandomForest'].fit(X_train, y_train)
+            # pipelines['RandomForest'].fit(X_train, y_train)
             best_model = None
             best_score = 0
             best_params = {}
@@ -197,7 +205,7 @@ class AutoMlMultiLabelClassifier:
 
                 # Inicjalizacja GridSearchCV
                 grid_search = GridSearchCV(pipeline, param_distributions[name],
-                                           cv=2, scoring='accuracy', n_jobs=-1, error_score='raise')
+                                           cv=2, scoring='accuracy', n_jobs=4, error_score='raise')
                 grid_search.fit(X_train, y_train)
 
                 # Najlepsze wyniki dla danego modelu
@@ -245,10 +253,10 @@ class AutoMlMultiLabelClassifier:
             raise ValueError("Model nie został jeszcze wytrenowany. Użyj metody fit przed predict.")
         try:
             # Triming danych
-            X = self.trimming_data_X(X)
-            
-            ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
-            X = ext.transform(pd.DataFrame(X))
+            # X = self.trimming_data_X(X)
+            print("X.shape: ", X.shape)
+            # ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
+            # X = ext.transform(pd.DataFrame(X))
 
             predictions = self.model.predict(X)
             
@@ -284,11 +292,12 @@ class AutoMlMultiLabelClassifier:
             y_pred = self.predict(X)
             
             # Trimming danych
-            y = self.trimming_data_y(y)
+            # y = self.trimming_data_y(y)
 
-            y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
-
-            statistics = compute_and_plot_statistics(y_test, y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
+            # y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
+            print("y.shape: ", y.shape)
+            print("y_pred.shape: ", y_pred.shape)
+            statistics = compute_and_plot_statistics(y, y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
             
             return statistics
         except Exception as e:
@@ -337,10 +346,10 @@ class AutoMlMultiLabelClassifier:
 
         """
         # Trimming danych
-        X, y = self.trimming_data(X, y)
+        # X, y = self.trimming_data(X, y)
             
         plot_data_raport(X, y, self.labels_type)
-
+        
 
 # Przykład użycia
 if __name__ == "__main__":
