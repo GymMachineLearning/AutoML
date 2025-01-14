@@ -18,7 +18,7 @@ from sklearn.metrics import recall_score
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-
+from lightgbm import LGBMClassifier
 class CustomPipeline(Pipeline):
     def fit(self, X, y=None):
         # Wypisanie kształtów przed transformacją
@@ -45,6 +45,9 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.preprocessing import FunctionTransformer
 import pandas as pd
 from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.manifold import TSNE
+from sklearn.linear_model import LogisticRegression
 
 def debug_function(X):
     # print(f"Shape after transformation: {X.shape}")
@@ -72,13 +75,16 @@ class AutoMlMultiLabelClassifier:
         X = self.trimming_data_X(X)
         print("X.shape: ",X.shape)
         y = self.trimming_data_y(y)
+
         print("y.shape: ",y.shape)
         return X, y
 
     def trimming_data_y(self, y):
         # Znajdź minimalną długość
         min_length = min(arr.shape[0] for arr in y)
-        
+        min_length = 20
+        self.window_size = 20
+        self.step_size = 20
         trimmed_segments_y = [
             arr[i:i+min_length, :] 
             for arr in y 
@@ -88,7 +94,7 @@ class AutoMlMultiLabelClassifier:
         y = np.array(trimmed_segments_y)
 
         y = y.reshape(-1, y.shape[2])
-        # y = process_labels_with_window_2d(y, self.window_size, self.step_size)
+        y = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
         # y = y.reshape(y.shape[0], -1) 
         y = pd.DataFrame(y)
@@ -98,9 +104,10 @@ class AutoMlMultiLabelClassifier:
         return y
 
     def trimming_data_X(self, X):
-        # Znajdź minimalną długość
         min_length = min(arr.shape[0] for arr in X)
-
+        min_length = 20
+        self.window_size = 20
+        self.step_size = 20
         # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
         trimmed_segments = [
             arr[i:i+min_length, :] 
@@ -111,8 +118,8 @@ class AutoMlMultiLabelClassifier:
         X = np.array(trimmed_segments)
         # self.print("X.shape: ",X.shape)
 
-        # X = X.reshape(X.shape[0], -1) 
-        X = X.reshape(-1,X.shape[2]) 
+        X = X.reshape(X.shape[0], -1) 
+        # X = X.reshape(-1,X.shape[2]) 
         
         print("X.shape: ",X.shape)
         X = pd.DataFrame(X)
@@ -123,14 +130,17 @@ class AutoMlMultiLabelClassifier:
 
     def fit(self, X, y):
         """
-        Automatycznie trenuje i optymalizuje modele ML na podanych danych.
+        Funkcja dokonuje selekcji i optymalizacji mogelu. 
+        Wybiera spośród:
+        - XGBoost OneVsRest
+        - XGBoost Mulitoutput
+        - LightGBM_OneVsRest
 
         Args:
             X (np.ndarray): Dane wejściowe (features).
             y (np.ndarray): Etykiety (labels).
         """
         try:
-            # Definicja parametrów dla GridSearchCV
             param_distributions = {
                 'RandomForest': {
                     'model__n_estimators': [100, 200, 300, 500, 1000],
@@ -138,41 +148,34 @@ class AutoMlMultiLabelClassifier:
                     # 'model__min_samples_split': [2, 5, 10],
                 },
                 'XGBoost': {
-                    'model__estimator__n_estimators': [ 500],
-                    # 'model__estimator__max_depth': [3, 6, 10],
+                    'model__estimator__n_estimators': [500, 1000, 1500],
+                    # 'model__estimator__max_depth': [1, 5, 10, 15],
                     # 'model__estimator__learning_rate': [0.01, 0.1, 0.3],
                     # 'model__estimator__subsample': [0.8, 1.0],
-                }
+                },
+                'XGBoost_MultiOutput':{
+                    'model__n_estimators': [500, 1000, 1500],
+                },
+                    'LightGBM_OneVsRest': {
+        'model__estimator__num_leaves': [31, 50, 100],  # Liczba liści w drzewach
+                    }
+                
+                
             }
 
-            # Trimming danych
-            # X, y = self.trimming_data(X, y)
-            
-            # y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
-            # Podział na dane treningowe i testowe
-            # pca = PCA(n_components=50)
-            # X = pca.fit_transform(X)
             feature_pipeline = Pipeline([
-                ('debug1', FunctionTransformer(debug_function, validate=False)),
                 ('pca', PCADimensionReducer()),
-                ('debug3', FunctionTransformer(debug_function, validate=False)),
             ])
-            
+
+
             # Tworzymy pipeline dla etykiet (y)
             label_pipeline = Pipeline([
-                ('debug11', FunctionTransformer(debug_function, validate=False)),
                 ('label_processing', WindowLabelProcessor(window_size=self.window_size, step=self.step_size)),
-                ('debug21', FunctionTransformer(debug_function, validate=False)),
 
             ])
             
-            # # Łączymy oba pipeline'y w jeden
-            # from sklearn.compose import ColumnTransformer
-            # full_pipeline = ColumnTransformer([
-            #     ('features', feature_pipeline, make_column_selector(pattern='^feature_')),  # Przetwarzanie cech
-            # ])
-            
+
             # Tworzenie pipeline'ów dla każdego modelu
             pipelines = {
                 # 'RandomForest': Pipeline([
@@ -180,22 +183,43 @@ class AutoMlMultiLabelClassifier:
                 #     ('model', RandomForestClassifier())
                 # ]),
                 'XGBoost': Pipeline([
-                    # ('preprocessing', feature_pipeline),
+                    ('preprocessing', feature_pipeline),
                     ('model', OneVsRestClassifier(XGBClassifier(n_jobs=4, eval_metric='auc',
                                                                 objective='binary:hinge', tree_method='hist')))
                 ])
             }
+            
+            pipelines['XGBoost_MultiOutput'] = Pipeline([
+                ('preprocessing', feature_pipeline),
+                ('model',XGBClassifier(
+                        n_jobs=4,
+                        objective='binary:logistic',
+                        tree_method='hist',
+                        multi_strategy='multi_output_tree',
+                        random_state=42
+                    ))
+            ])
+            
+            # pipelines['LightGBM_OneVsRest'] = Pipeline([
+            #     ('preprocessing', feature_pipeline),
+            #     ('model', OneVsRestClassifier(LGBMClassifier(
+            #             n_jobs=4,
+            #             objective='binary',
+            #             boosting_type='gbdt',
+            #             tree_learner='serial',
+            #             random_state=42
+            #         )))
+            # ])
 
-            # ext = WindowLabelProcessor(window_size=self.window_size, step=self.step_size)
-            # y = ext.transform(pd.DataFrame(y))
             
-            # ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
-            # X = ext.transform(pd.DataFrame(X))
-            
+            # pipelines['LogisticRegression_MultiOutput'] = Pipeline([
+            #     ('preprocessing', feature_pipeline),
+            #     ('model', OneVsRestClassifier(LogisticRegression(
+            #             random_state=42
+            #         )))
+            # ])
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-            print('fituje')
-            # pipelines['RandomForest'].fit(X_train, y_train)
             best_model = None
             best_score = 0
             best_params = {}
@@ -203,22 +227,18 @@ class AutoMlMultiLabelClassifier:
             for name, pipeline in pipelines.items():
                 print(f"Trenuję model: {name}")
 
-                # Inicjalizacja GridSearchCV
                 grid_search = GridSearchCV(pipeline, param_distributions[name],
-                                           cv=2, scoring='accuracy', n_jobs=4, error_score='raise')
+                                           cv=2, scoring='f1_macro', n_jobs=4, error_score='raise')
                 grid_search.fit(X_train, y_train)
 
-                # Najlepsze wyniki dla danego modelu
                 print(f"{name} - Best Parameters: {grid_search.best_params_}")
                 print(f"{name} - Best Cross-Validation Score: {grid_search.best_score_}")
 
-                # Sprawdzanie, czy to najlepszy model
                 if grid_search.best_score_ > best_score:
                     best_model = grid_search.best_estimator_
                     best_score = grid_search.best_score_
                     best_params = grid_search.best_params_
 
-            # Predykcja i ocena najlepszego modelu
             print("\nNajlepszy model:", best_model)
             print("Najlepsze parametry:", best_params)
 
@@ -227,10 +247,7 @@ class AutoMlMultiLabelClassifier:
             accuracy = accuracy_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred, average='weighted')
 
-            # Wyćwiczyliśmy model
             self.is_fitted = True
-
-            # Zapis modelu
             self.model = best_model
             
             print(f"Accuracy: {accuracy}")
