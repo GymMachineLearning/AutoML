@@ -26,15 +26,19 @@ from scipy.sparse import csr_matrix
 from skmultilearn.problem_transform import BinaryRelevance
 from skmultilearn.adapt import MLkNN
 from python_files.Preprocess import PaddingEstimator, add_pad, extract_features_with_window, process_labels_with_window, WindowFeatureExtractor, WindowLabelProcessor, process_labels_with_window_2d, PCADimensionReducer
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 
 feature_pipeline = Pipeline([
                 ('pca', PCADimensionReducer()),
+                ('imputer', SimpleImputer(strategy='mean')),  
+                ('scaler', StandardScaler()), 
             ])
 
 pipelines = {
                 'OneVsRest_LogisticRegression': Pipeline([
                 ('preprocessing', feature_pipeline),  
-                ('model', OneVsRestClassifier(LogisticRegression(solver='liblinear', max_iter=1000)))  
+                ('model', OneVsRestClassifier(LogisticRegression(solver='liblinear', max_iter=100)))  
                 ]),
                 'SVC': Pipeline([
                     ('preprocessing', feature_pipeline),
@@ -64,7 +68,7 @@ pipelines = {
 
 param_distributions = {
                 'SVC': {
-                'model__estimator__C': [0.1, 1, 10, 100],     
+                'model__estimator__C': [0.1, 1, 10],     
                 'model__estimator__kernel': ['linear', 'rbf'], 
                 'model__estimator__gamma': ['scale', 'auto'],  
                         },

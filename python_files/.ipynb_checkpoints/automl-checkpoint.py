@@ -4,6 +4,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import recall_score, precision_score, accuracy_score
 from sklearn.model_selection import GridSearchCV
+from skmultilearn.model_selection import iterative_train_test_split
+
 #------------------------------------------IMPORT LIBS-------------------------------------------
 
 
@@ -24,8 +26,7 @@ class AutoMlMultiLabelClassifier:
         """
 
         Args:
-            model (sklearn.base.BaseEstimator, optional): Model klasyfikacyjny. 
-                Domyślnie RandomForestClassifier.
+
         """
         
         self.model = None
@@ -63,10 +64,10 @@ class AutoMlMultiLabelClassifier:
         y = y.reshape(-1, y.shape[2])
         y = process_labels_with_window_2d(y, self.window_size, self.step_size)
 
-        # y = y.reshape(y.shape[0], -1) 
-        y = pd.DataFrame(y)
+        # # y = y.reshape(y.shape[0], -1) 
+        # y = pd.DataFrame(y)
 
-        y.columns = ['label_' + str(col) for col in y.columns]
+        # y.columns = ['label_' + str(col) for col in y.columns]
 
         return y
 
@@ -90,9 +91,9 @@ class AutoMlMultiLabelClassifier:
         # X = X.reshape(-1,X.shape[2]) 
         
         # print("X.shape: ",X.shape)
-        X = pd.DataFrame(X)
+        # X = pd.DataFrame(X)
     
-        X.columns = ['feature_' + str(col) for col in X.columns]
+        # X.columns = ['feature_' + str(col) for col in X.columns]
 
         return X
     
@@ -110,8 +111,9 @@ class AutoMlMultiLabelClassifier:
             y (np.ndarray): Etykiety (labels).
         """
         try:
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
+            # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+            X_train, y_train, X_test, y_test = iterative_train_test_split(X, y, test_size=0.2)
+
             best_model = None
             best_score = 0
             best_params = {}
@@ -122,8 +124,8 @@ class AutoMlMultiLabelClassifier:
                 print(f"---------------------------------------------------")
                 print(f"Training model: {name}")
     
-                grid_search = GridSearchCV(pipeline, param_distributions[name],
-                                           cv=2, scoring='f1_macro', n_jobs=4, error_score='raise')
+                grid_search = GridSearchCV(pipeline, param_distributions[name]
+                                           , scoring='f1_macro', n_jobs=4, error_score='raise')
                 grid_search.fit(X_train, y_train)
     
                 print(f"{name} - Best Parameters: {grid_search.best_params_}")

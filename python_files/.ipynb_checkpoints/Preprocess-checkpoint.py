@@ -245,7 +245,7 @@ def process_labels_with_window_2d(y, window_size, step):
         window = y[start:end]  # Wyciągamy okno
         
         # Dla każdej klasy (kolumny) w oknie, jeśli występuje co najmniej 5 '1', ustawiamy etykietę tej klasy na '1'
-        window_label = (np.sum(window == 1, axis=0) >= 5).astype(int)  # Zwracamy wektor 10-elementowy
+        window_label = (np.sum(window == 1, axis=0) >= int(window_size/5)).astype(int)  # Zwracamy wektor 10-elementowy
         window_labels.append(window_label)
     
     return np.array(window_labels)
