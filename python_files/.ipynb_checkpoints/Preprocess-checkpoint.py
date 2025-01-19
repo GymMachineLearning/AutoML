@@ -134,16 +134,22 @@ class PaddingEstimator(BaseEstimator, TransformerMixin):
 class PCADimensionReducer(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=80):
         self.n_components = n_components
-        self.pca = PCA(n_components=self.n_components)
+        self.pca = None
 
     def fit(self, X, y=None):
+        # Ustalamy liczbę komponentów na podstawie liczby cech w danych
+        n_features = X.shape[1]
+        self.n_components = min(self.n_components, n_features)
+        
         # Dopasowujemy PCA do danych
+        self.pca = PCA(n_components=self.n_components)
         self.pca.fit(X)
         return self
 
     def transform(self, X, y=None):
-        # Transformujemy dane, aby uzyskać 50 głównych składowych
+        # Transformujemy dane przy użyciu dopasowanego PCA
         return self.pca.transform(X)
+
 
 
 

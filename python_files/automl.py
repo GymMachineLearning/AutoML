@@ -235,8 +235,11 @@ class AutoMlMultiLabelClassifier:
         # Wykresy dla statystyk dla różnych klas.
         y_pred = self.predict(X)
         plot_stats = False   
-        statistics = compute_and_plot_statistics(np.array(y), y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
-        plot_statistics_per_class(statistics, self.labels_type)
+        n_features = y.shape[1]
+        gen_labels = [f'label_{i}' for i in range(n_features)]
+
+        statistics = compute_and_plot_statistics(np.array(y), y_pred,        gen_labels if not self.labels_type else self.labels_type, print_stats=False, plot_stats=plot_stats)
+        plot_statistics_per_class(statistics,      gen_labels if not self.labels_type else self.labels_type)
 
         # Poniżej wypisujemy wyniki w postaci liczbowej
         statistics_list = sorted(statistics)  # Sortujemy metryki alfabetycznie
@@ -244,7 +247,7 @@ class AutoMlMultiLabelClassifier:
         
         # Tworzenie DataFrame
         df = pd.DataFrame.from_dict(statistics_dict, orient="index")
-        df.columns = [f"Value {self.labels_type[i]}" for i in range(df.shape[1])]  # Nazwy kolumn
+        df.columns = [f"Value {gen_labels[i] if not self.labels_type else self.labels_type[i]}" for i in range(df.shape[1])]  # Nazwy kolumn
         
         # Wyświetlenie macierzy
         print("Wyniki w postaci macierzy")
@@ -260,10 +263,10 @@ class AutoMlMultiLabelClassifier:
             y (np.ndarray): Rzeczywiste etykiety (labels).
 
         """
-        # Trimming danych
-        # X, y = self.trimming_data(X, y)
-            
-        plot_data_raport(X, y, self.labels_type)
+
+        n_features = y.shape[1]
+        gen_labels = [f'label_{i}' for i in range(n_features)]
+        plot_data_raport(X, y,  gen_labels if not self.labels_type else self.labels_type)
         
 
 
