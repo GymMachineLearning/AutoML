@@ -1,40 +1,22 @@
+#------------------------------------------IMPORT LIBS-------------------------------------------
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-
-from python_files.Preprocess import PaddingEstimator, add_pad, extract_features_with_window, process_labels_with_window, WindowFeatureExtractor, WindowLabelProcessor, process_labels_with_window_2d, PCADimensionReducer
-
-
-from python_files.Plot import compute_and_plot_statistics, plot_statistics_per_class, plot_data_raport
-
-from sklearn.pipeline import Pipeline
-from sklearn.multioutput import MultiOutputClassifier
-import xgboost as xgb
-from sklearn.pipeline import Pipeline
-from xgboost import XGBClassifier
-from sklearn.decomposition import PCA
-from sklearn.metrics import recall_score
-from sklearn.model_selection import GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from lightgbm import LGBMClassifier
-
-
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.multiclass import OneVsRestClassifier
-from xgboost import XGBClassifier
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.preprocessing import FunctionTransformer
 import pandas as pd
-from sklearn.compose import ColumnTransformer, make_column_selector
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.manifold import TSNE
-from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import recall_score, precision_score, accuracy_score
+from sklearn.model_selection import GridSearchCV
+#------------------------------------------IMPORT LIBS-------------------------------------------
 
-def debug_function(X):
-    # print(f"Shape after transformation: {X.shape}")
-    return X
+
+#------------------------------------------PREPROCESS AND EVALUTAION-------------------------------------------
+from python_files.Preprocess import PaddingEstimator, add_pad, extract_features_with_window, process_labels_with_window, WindowFeatureExtractor, WindowLabelProcessor, process_labels_with_window_2d, PCADimensionReducer
+from python_files.Plot import compute_and_plot_statistics, plot_statistics_per_class, plot_data_raport
+#------------------------------------------PREPROCESS AND EVALUTAION-------------------------------------------
+
+
+
+# -----------------------------IMPORT piplines and param distributions-----------------------#
+from python_files.ModelSelection import display_model_info, param_distributions, pipelines
+# -----------------------------IMPORT piplines and param distributions-----------------------#
 
 
 class AutoMlMultiLabelClassifier:
@@ -46,28 +28,30 @@ class AutoMlMultiLabelClassifier:
                 Domyślnie RandomForestClassifier.
         """
         
-        self.model = model if model else RandomForestClassifier()
+        self.model = None
         self.is_fitted = False
         self.window_size = window_size # Rozmiar okna dla obrabiania X
         self.step_size = step_size # Rozmiar okna dla obrabiania y
         self.labels_type = labels_type 
         
-    def trimming_data(self, X, y):
+    def trimming_data(self, X, y, fraction = 0.5):
         # Trimming z wykorzstyaniem funkcji pojedyńczych
         print("X.shape: ",X.shape)
-        X = self.trimming_data_X(X)
+        X = self.trimming_data_X(X, fraction)
         print("X.shape: ",X.shape)
-        y = self.trimming_data_y(y)
+        y = self.trimming_data_y(y, fraction)
 
         print("y.shape: ",y.shape)
         return X, y
 
-    def trimming_data_y(self, y):
+    def trimming_data_y(self, y, fraction = 0.5):
         # Znajdź minimalną długość
         min_length = min(arr.shape[0] for arr in y)
-        min_length = 20
-        self.window_size = 20
-        self.step_size = 20
+        self.window_size = int(min_length*fraction)
+        self.step_size =  int(min_length*fraction)
+        print("otrzymane okno:", self.window_size )
+        min_length = self.window_size
+
         trimmed_segments_y = [
             arr[i:i+min_length, :] 
             for arr in y 
@@ -86,11 +70,12 @@ class AutoMlMultiLabelClassifier:
 
         return y
 
-    def trimming_data_X(self, X):
+    def trimming_data_X(self, X, fraction = 0.5):
         min_length = min(arr.shape[0] for arr in X)
-        min_length = 20
-        self.window_size = 20
-        self.step_size = 20
+        self.window_size =  int(min_length*fraction)
+        self.step_size =  int(min_length*fraction)
+        print("otrzymane okno:", self.window_size )
+        min_length = self.window_size
         # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
         trimmed_segments = [
             arr[i:i+min_length, :] 
@@ -111,96 +96,23 @@ class AutoMlMultiLabelClassifier:
 
         return X
 
+
+
     def fit(self, X, y):
         """
-        Funkcja dokonuje selekcji i optymalizacji mogelu. 
+        Funkcja dokonuje selekcji i optymalizacji mogelu. Piplines i paramdistributions są dostępne w ModelSelection.py
         Wybiera spośród:
+        - SVC OneVsRest
+        - Regresja logistyczna OneVsRest
         - XGBoost OneVsRest
         - XGBoost Mulitoutput
-        - LightGBM_OneVsRest
 
         Args:
             X (np.ndarray): Dane wejściowe (features).
             y (np.ndarray): Etykiety (labels).
         """
         try:
-            param_distributions = {
-                'RandomForest': {
-                    'model__n_estimators': [100, 200, 300, 500, 1000],
-                    # 'model__max_depth': [10, 20, None],
-                    # 'model__min_samples_split': [2, 5, 10],
-                },
-                'XGBoost': {
-                    'model__estimator__n_estimators': [500, 1000, 1500],
-                    # 'model__estimator__max_depth': [1, 5, 10, 15],
-                    # 'model__estimator__learning_rate': [0.01, 0.1, 0.3],
-                    # 'model__estimator__subsample': [0.8, 1.0],
-                },
-                'XGBoost_MultiOutput':{
-                    'model__n_estimators': [500, 1000, 1500],
-                },
-                    'LightGBM_OneVsRest': {
-        'model__estimator__num_leaves': [31, 50, 100],  # Liczba liści w drzewach
-                    }
-                
-                
-            }
 
-
-            feature_pipeline = Pipeline([
-                ('pca', PCADimensionReducer()),
-            ])
-
-
-            # Tworzymy pipeline dla etykiet (y)
-            label_pipeline = Pipeline([
-                ('label_processing', WindowLabelProcessor(window_size=self.window_size, step=self.step_size)),
-
-            ])
-            
-
-            # Tworzenie pipeline'ów dla każdego modelu
-            pipelines = {
-                # 'RandomForest': Pipeline([
-                #     ('preprocessing', feature_pipeline),
-                #     ('model', RandomForestClassifier())
-                # ]),
-                'XGBoost': Pipeline([
-                    ('preprocessing', feature_pipeline),
-                    ('model', OneVsRestClassifier(XGBClassifier(n_jobs=4, eval_metric='auc',
-                                                                objective='binary:hinge', tree_method='hist')))
-                ])
-            }
-            
-            pipelines['XGBoost_MultiOutput'] = Pipeline([
-                ('preprocessing', feature_pipeline),
-                ('model',XGBClassifier(
-                        n_jobs=4,
-                        objective='binary:logistic',
-                        tree_method='hist',
-                        multi_strategy='multi_output_tree',
-                        random_state=42
-                    ))
-            ])
-            
-            # pipelines['LightGBM_OneVsRest'] = Pipeline([
-            #     ('preprocessing', feature_pipeline),
-            #     ('model', OneVsRestClassifier(LGBMClassifier(
-            #             n_jobs=4,
-            #             objective='binary',
-            #             boosting_type='gbdt',
-            #             tree_learner='serial',
-            #             random_state=42
-            #         )))
-            # ])
-
-            
-            # pipelines['LogisticRegression_MultiOutput'] = Pipeline([
-            #     ('preprocessing', feature_pipeline),
-            #     ('model', OneVsRestClassifier(LogisticRegression(
-            #             random_state=42
-            #         )))
-            # ])
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
             best_model = None
@@ -222,19 +134,21 @@ class AutoMlMultiLabelClassifier:
                     best_score = grid_search.best_score_
                     best_params = grid_search.best_params_
 
-            print("\nNajlepszy model:", best_model)
-            print("Najlepsze parametry:", best_params)
 
             y_pred = best_model.predict(X_test)
 
             accuracy = accuracy_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred, average='weighted')
+            precision = precision_score(y_test, y_pred, average='weighted')
 
             self.is_fitted = True
             self.model = best_model
-            
+
+            display_model_info(self.model)
+            print("Test Set statistics")
             print(f"Accuracy: {accuracy}")
             print(f"Recall: {recall}")
+            print(f"Precision: {precision}")
 
         except Exception as e:
             print(f"Wystąpił błąd podczas treningu: {e}")
@@ -252,12 +166,6 @@ class AutoMlMultiLabelClassifier:
         if not self.is_fitted:
             raise ValueError("Model nie został jeszcze wytrenowany. Użyj metody fit przed predict.")
         try:
-            # Triming danych
-            # X = self.trimming_data_X(X)
-            print("X.shape: ", X.shape)
-            # ext = WindowFeatureExtractor(window_size=self.window_size, step_size=self.step_size)
-            # X = ext.transform(pd.DataFrame(X))
-
             predictions = self.model.predict(X)
             
             return predictions
@@ -291,20 +199,14 @@ class AutoMlMultiLabelClassifier:
         try:
             y_pred = self.predict(X)
             
-            # Trimming danych
-            # y = self.trimming_data_y(y)
-
-            # y_test = process_labels_with_window_2d(y, self.window_size, self.step_size)
-            print("y.shape: ", y.shape)
-            print("y_pred.shape: ", y_pred.shape)
             statistics = compute_and_plot_statistics(np.array(y), y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
             
-            return statistics
+            return statistics['accuracy']
         except Exception as e:
             print(f"Błąd podczas obliczania dokładności: {e}")
             return None
 
-    def raport_scores(self, statistics):
+    def raport_scores(self, X, y):
         """
         Funkcja wyświetla najważniejsze statystki dla modelu. Tworzy wyrkesu i podsumowania. Szczególnie liczy efektywnośc modelu dla każdej klasy oddzielnie.
 
@@ -321,6 +223,9 @@ class AutoMlMultiLabelClassifier:
         """
         print("Wykres przedstawiający statystyki (precision, recall, f1, AUC oraz accuracy) dla każdej klasy błędów z osobna")
         # Wykresy dla statystyk dla różnych klas.
+        y_pred = self.predict(X)
+        plot_stats = False   
+        statistics = compute_and_plot_statistics(np.array(y), y_pred, self.labels_type, print_stats=False, plot_stats=plot_stats)
         plot_statistics_per_class(statistics, self.labels_type)
 
         # Poniżej wypisujemy wyniki w postaci liczbowej
@@ -351,19 +256,4 @@ class AutoMlMultiLabelClassifier:
         plot_data_raport(X, y, self.labels_type)
         
 
-# Przykład użycia
-if __name__ == "__main__":
-    # Generowanie przykładowych danych
-    from sklearn.datasets import make_classification
 
-    X, y = make_classification(n_samples=1000, n_features=20, n_classes=2, random_state=42)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Użycie klasy
-    cls = AutoSklearnClassifier()
-    cls.fit(X_train, y_train)
-    predictions = cls.predict(X_test)
-    accuracy = cls.score(X_test, y_test)
-
-    print("Przewidywania:", predictions[:10])
-    print("Dokładność:", accuracy)
