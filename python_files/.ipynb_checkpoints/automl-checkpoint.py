@@ -36,12 +36,12 @@ class AutoMlMultiLabelClassifier:
         
     def trimming_data(self, X, y, fraction = 0.5):
         # Trimming z wykorzstyaniem funkcji pojedyńczych
-        print("X.shape: ",X.shape)
+        # print("X.shape: ",X.shape)
         X = self.trimming_data_X(X, fraction)
-        print("X.shape: ",X.shape)
+        # print("X.shape: ",X.shape)
         y = self.trimming_data_y(y, fraction)
 
-        print("y.shape: ",y.shape)
+        # print("y.shape: ",y.shape)
         return X, y
 
     def trimming_data_y(self, y, fraction = 0.5):
@@ -49,7 +49,7 @@ class AutoMlMultiLabelClassifier:
         min_length = min(arr.shape[0] for arr in y)
         self.window_size = int(min_length*fraction)
         self.step_size =  int(min_length*fraction)
-        print("otrzymane okno:", self.window_size )
+        # print("otrzymane okno:", self.window_size )
         min_length = self.window_size
 
         trimmed_segments_y = [
@@ -74,7 +74,7 @@ class AutoMlMultiLabelClassifier:
         min_length = min(arr.shape[0] for arr in X)
         self.window_size =  int(min_length*fraction)
         self.step_size =  int(min_length*fraction)
-        print("otrzymane okno:", self.window_size )
+        # print("otrzymane okno:", self.window_size )
         min_length = self.window_size
         # Wyodrębnienie maksymalnej liczby segmentów o długości min_length
         trimmed_segments = [
@@ -89,67 +89,77 @@ class AutoMlMultiLabelClassifier:
         X = X.reshape(X.shape[0], -1) 
         # X = X.reshape(-1,X.shape[2]) 
         
-        print("X.shape: ",X.shape)
+        # print("X.shape: ",X.shape)
         X = pd.DataFrame(X)
     
         X.columns = ['feature_' + str(col) for col in X.columns]
 
         return X
-
-
-
+    
     def fit(self, X, y):
         """
-        Funkcja dokonuje selekcji i optymalizacji mogelu. Piplines i paramdistributions są dostępne w ModelSelection.py
+        Funkcja dokonuje selekcji i optymalizacji mogelu. Piplines i paramdistributions są dostępne w ModelSelection.py
         Wybiera spośród:
         - SVC OneVsRest
         - Regresja logistyczna OneVsRest
         - XGBoost OneVsRest
         - XGBoost Mulitoutput
-
+    
         Args:
             X (np.ndarray): Dane wejściowe (features).
             y (np.ndarray): Etykiety (labels).
         """
         try:
-
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
+    
             best_model = None
             best_score = 0
             best_params = {}
-
+    
+            model_results = []  # Lista do przechowywania wyników modeli
+    
             for name, pipeline in pipelines.items():
-                print(f"Trenuję model: {name}")
-
+                print(f"---------------------------------------------------")
+                print(f"Training model: {name}")
+    
                 grid_search = GridSearchCV(pipeline, param_distributions[name],
                                            cv=2, scoring='f1_macro', n_jobs=4, error_score='raise')
                 grid_search.fit(X_train, y_train)
-
+    
                 print(f"{name} - Best Parameters: {grid_search.best_params_}")
                 print(f"{name} - Best Cross-Validation Score: {grid_search.best_score_}")
-
+    
+                model_results.append((name, grid_search.best_score_, grid_search.best_params_))  # Dodanie wyników modelu
+    
                 if grid_search.best_score_ > best_score:
                     best_model = grid_search.best_estimator_
                     best_score = grid_search.best_score_
                     best_params = grid_search.best_params_
+                print(f"---------------------------------------------------")
 
-
+    
+            model_results.sort(key=lambda x: x[1], reverse=True)
+    
+            print("\nModels ranking:")
+            for idx, (name, score, params) in enumerate(model_results):
+                print(f"{idx + 1}. {name} - Best CV Score: {score} - Best Parameters: {params}")
+    
+            # Testowanie najlepszego modelu
             y_pred = best_model.predict(X_test)
-
+    
             accuracy = accuracy_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred, average='weighted')
             precision = precision_score(y_test, y_pred, average='weighted')
-
+    
             self.is_fitted = True
             self.model = best_model
-
+    
             display_model_info(self.model)
             print("Test Set statistics")
             print(f"Accuracy: {accuracy}")
             print(f"Recall: {recall}")
             print(f"Precision: {precision}")
-
+    
         except Exception as e:
             print(f"Wystąpił błąd podczas treningu: {e}")
             
